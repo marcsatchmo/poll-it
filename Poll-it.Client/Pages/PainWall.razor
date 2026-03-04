@@ -1,0 +1,340 @@
+@page "/wall"
+@using Poll_it.Shared
+@using Microsoft.AspNetCore.SignalR.Client
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Muro de Dolores - Poll-it</PageTitle>
+
+<!-- 
+    ARQUITECTURA - COMPONENTE DE VISUALIZACIÓN EN TIEMPO REAL
+    ===========================================================
+    
+    Este componente demuestra COMUNICACIÓN EN TIEMPO REAL usando SignalR.
+    
+    RESPONSABILIDADES:
+    1. Conectarse al Hub de SignalR al inicializar
+    2. Escuchar nuevos dolores broadcasted por el servidor
+    3. Cargar dolores existentes desde la API
+    4. Renderizar en un layout atractivo tipo "Post-it"
+    
+    FLUJO DE DATOS (ARQUITECTURA):
+    
+    ┌─────────────┐       HTTP GET        ┌─────────────┐
+    │  PainWall   │ ───────────────────> │   API       │
+    │  Component  │ <─────────────────── │  /painpoints│
+    └─────────────┘    Lista Inicial     └─────────────┘
+          │
+          │ SignalR Connection
+          │
+          ▼
+    ┌─────────────┐                      ┌─────────────┐
+    │  SignalR    │ ◄───── Broadcast ─── │  PainHub    │
+    │  HubConn    │        (Servidor)    │  (Server)   │
+    └─────────────┘                      └─────────────┘
+          │
+          │ On("ReceiveNewPain")
+          │
+          ▼
+    Actualiza UI automáticamente
+    
+    SEPARACIÓN DE CONCERNS:
+    - Este componente solo visualiza
+    - No conoce cómo se persisten los datos
+    - El servidor maneja toda la lógica de negocio
+    - SignalR es solo el canal de comunicación
+-->
+
+<div class="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4 md:p-8">
+    <!-- Header -->
+    <div class="max-w-7xl mx-auto mb-8">
+        <div class="text-center mb-6">
+            <h1 class="text-5xl md:text-6xl font-bold text-gray-800 mb-2">
+                🗣️ Muro de Dolores
+            </h1>
+            <p class="text-xl text-gray-600">
+                Los dolores técnicos de todos, en tiempo real
+            </p>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="flex justify-center items-center gap-3 mb-6">
+            @if (isConnected)
+            {
+                <div class="flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full border-2 border-green-500">
+                    <span class="relative flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    <span class="font-medium">Conectado en Tiempo Real</span>
+                </div>
+            }
+            else
+            {
+                <div class="flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full border-2 border-yellow-500">
+                    <span class="relative flex h-3 w-3">
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                    </span>
+                    <span class="font-medium">Conectando...</span>
+                </div>
+            }
+
+            <div class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full border-2 border-blue-500 font-medium">
+                📊 @painPoints.Count dolores compartidos
+            </div>
+        </div>
+
+        <!-- Link to Submit -->
+        <div class="text-center">
+            <a href="/submit" class="inline-block bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-lg">
+                ➕ Agregar mi Dolor
+            </a>
+        </div>
+    </div>
+
+    <!-- Pain Points Grid (Masonry Style) -->
+    <div class="max-w-7xl mx-auto">
+        @if (isLoading)
+        {
+            <div class="flex justify-center items-center py-20">
+                <div class="text-center">
+                    <svg class="animate-spin h-16 w-16 text-purple-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="text-xl text-gray-600">Cargando dolores...</p>
+                </div>
+            </div>
+        }
+        else if (!painPoints.Any())
+        {
+            <div class="text-center py-20">
+                <div class="text-6xl mb-4">😊</div>
+                <h2 class="text-2xl font-bold text-gray-700 mb-2">¡No hay dolores todavía!</h2>
+                <p class="text-gray-600 mb-6">Sé el primero en compartir tu dolor técnico.</p>
+                <a href="/submit" class="inline-block bg-purple-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-purple-700 transition-all">
+                    Compartir mi Dolor
+                </a>
+            </div>
+        }
+        else
+        {
+            <!-- Masonry Grid Layout -->
+            <div class="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+                @foreach (var pain in painPoints.OrderByDescending(p => p.CreatedAt))
+                {
+                    <div class="break-inside-avoid">
+                        <div class="@GetCardClass(pain.Color) p-6 rounded-lg shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:rotate-1 animate-fade-in border-4 @GetBorderClass(pain.Color)">
+                            <!-- Pain Text -->
+                            <div class="mb-4">
+                                <p class="text-gray-800 font-medium text-lg leading-relaxed">
+                                    "@pain.Text"
+                                </p>
+                            </div>
+
+                            <!-- Metadata -->
+                            <div class="flex items-center justify-between text-sm text-gray-600 border-t-2 border-gray-300 pt-3">
+                                <div class="flex items-center gap-1">
+                                    <span>📅</span>
+                                    <span>@pain.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                                </div>
+                                
+                                @if (IsNewPain(pain))
+                                {
+                                    <span class="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">
+                                        ¡NUEVO!
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- Footer Info -->
+    <div class="max-w-7xl mx-auto mt-12 text-center">
+        <div class="bg-white/50 backdrop-blur-sm rounded-lg p-6 border-2 border-purple-200">
+            <p class="text-gray-700">
+                💡 <strong>Arquitectura en Acción:</strong> Esta pantalla se actualiza automáticamente usando 
+                <span class="font-mono bg-purple-100 px-2 py-1 rounded">SignalR</span> 
+                para comunicación en tiempo real. Sin recargar la página. Sin polling. Conexión bidireccional persistente.
+            </p>
+        </div>
+    </div>
+</div>
+
+<style>
+    @@keyframes fade-in {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-fade-in {
+        animation: fade-in 0.5s ease-out;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// Lista de todos los pain points cargados.
+    /// </summary>
+    private List<PainPoint> painPoints = new();
+
+    /// <summary>
+    /// Conexión a SignalR Hub para recibir actualizaciones en tiempo real.
+    /// </summary>
+    private HubConnection? hubConnection;
+
+    /// <summary>
+    /// Indica si la conexión SignalR está establecida.
+    /// </summary>
+    private bool isConnected => hubConnection?.State == HubConnectionState.Connected;
+
+    /// <summary>
+    /// Indica si está cargando los datos iniciales.
+    /// </summary>
+    private bool isLoading = true;
+
+    /// <summary>
+    /// Timestamp para identificar dolores recién recibidos.
+    /// </summary>
+    private DateTime lastRefreshTime = DateTime.UtcNow;
+
+    /// <summary>
+    /// Inicialización del componente.
+    /// </summary>
+    /// <remarks>
+    /// FLUJO DE INICIALIZACIÓN:
+    /// 1. Cargar dolores existentes via HTTP GET
+    /// 2. Establecer conexión SignalR
+    /// 3. Suscribirse al evento "ReceiveNewPain"
+    /// 4. Mantener la conexión abierta
+    /// 
+    /// ARQUITECTURA SignalR:
+    /// - El Hub del servidor broadcast a TODOS los clientes conectados
+    /// - Este componente recibe y renderiza automáticamente
+    /// - No hay polling, la conexión es persistente
+    /// - Eficiente y escalable
+    /// </remarks>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // 1. Cargar dolores existentes
+            await LoadPainPoints();
+
+            // 2. Configurar conexión SignalR
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/painhub"))
+                .WithAutomaticReconnect() // Reconexión automática
+                .Build();
+
+            // 3. Suscribirse a nuevos dolores
+            hubConnection.On<PainPoint>("ReceiveNewPain", async (newPain) =>
+            {
+                // Agregar el nuevo dolor a la lista
+                painPoints.Insert(0, newPain); // Al principio para mostrarlo arriba
+                
+                // Actualizar la UI
+                await InvokeAsync(StateHasChanged);
+            });
+
+            // 4. Iniciar la conexión
+            await hubConnection.StartAsync();
+
+            lastRefreshTime = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al inicializar: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Carga todos los pain points desde la API.
+    /// </summary>
+    private async Task LoadPainPoints()
+    {
+        try
+        {
+            var points = await Http.GetFromJsonAsync<List<PainPoint>>("api/painpoints");
+            if (points != null)
+            {
+                painPoints = points;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar dolores: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Determina si un dolor es nuevo (recién recibido).
+    /// </summary>
+    private bool IsNewPain(PainPoint pain)
+    {
+        return (DateTime.UtcNow - pain.CreatedAt).TotalSeconds < 10;
+    }
+
+    /// <summary>
+    /// Retorna la clase CSS para el color de fondo del post-it.
+    /// </summary>
+    private string GetCardClass(string color)
+    {
+        return color.ToLower() switch
+        {
+            "yellow" => "bg-yellow-200",
+            "pink" => "bg-pink-200",
+            "blue" => "bg-blue-200",
+            "green" => "bg-green-200",
+            "purple" => "bg-purple-200",
+            "orange" => "bg-orange-200",
+            _ => "bg-yellow-200"
+        };
+    }
+
+    /// <summary>
+    /// Retorna la clase CSS para el borde del post-it.
+    /// </summary>
+    private string GetBorderClass(string color)
+    {
+        return color.ToLower() switch
+        {
+            "yellow" => "border-yellow-400",
+            "pink" => "border-pink-400",
+            "blue" => "border-blue-400",
+            "green" => "border-green-400",
+            "purple" => "border-purple-400",
+            "orange" => "border-orange-400",
+            _ => "border-yellow-400"
+        };
+    }
+
+    /// <summary>
+    /// Limpieza: Cerrar la conexión SignalR al destruir el componente.
+    /// </summary>
+    /// <remarks>
+    /// IMPORTANTE: Siempre cerrar las conexiones SignalR para liberar recursos.
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

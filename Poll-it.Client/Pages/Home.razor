@@ -1,0 +1,41 @@
+﻿@page "/"
+@inject NavigationManager Navigation
+
+<PageTitle>Poll-it - Inicio</PageTitle>
+
+<!--
+    ARQUITECTURA - PÁGINA DE INICIO
+    ================================
+    
+    Esta página es la entrada principal de la aplicación.
+    Redirige automáticamente a la página de envío de dolores.
+    
+    DECISIÓN DE DISEÑO:
+    - Redirección inmediata para simplificar la UX
+    - Los usuarios llegan directamente a la funcionalidad principal
+    - Menos clics = mejor experiencia
+-->
+
+<div class="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
+    <div class="text-center text-white">
+        <div class="mb-8">
+            <svg class="animate-spin h-20 w-20 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </div>
+        <h1 class="text-4xl font-bold mb-2">Bienvenido a Poll-it</h1>
+        <p class="text-xl opacity-90">Redirigiendo...</p>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Redirige automáticamente a la página de envío al cargar.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        // Redirección inmediata a la página de envío
+        Navigation.NavigateTo("/submit");
+    }
+}

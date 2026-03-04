@@ -1,0 +1,19 @@
+﻿<!--
+    ARQUITECTURA - ENRUTAMIENTO Y NAVEGACIÓN
+    =========================================
+    
+    El componente App es el punto de entrada de la aplicación Blazor.
+    Configura el enrutamiento entre las diferentes páginas.
+    
+    DECISIÓN DE DISEÑO: Sin Layout
+    - No usamos MainLayout porque cada página tiene su propio diseño completo
+    - Esto permite diseños únicos y optimizados para cada vista
+    - Simplicidad: menos capas de abstracción = código más fácil de explicar
+-->
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+</Router>

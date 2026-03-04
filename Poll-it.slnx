@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Poll-it.Client/Poll-it.Client.csproj" />
+  <Project Path="Poll-it.Server/Poll-it.Server.csproj" />
+  <Project Path="Poll-it.Shared/Poll-it.Shared.csproj" />
+</Solution>
