@@ -55,13 +55,24 @@ builder.Services.AddSignalR();
 
 // Configurar CORS (Cross-Origin Resource Sharing)
 // Necesario porque el cliente Blazor (puerto diferente) hará peticiones al servidor
+// IMPORTANTE: Los orígenes permitidos se leen desde la configuración por entorno
+// - En desarrollo: localhost (definido aquí como fallback)
+// - En producción: Se cargan desde appsettings.Production.json via Azure
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazorClient", policy =>
     {
-        policy.WithOrigins(
-            "https://localhost:7219", 
-            "http://localhost:5048")
+        // Leer los orígenes permitidos desde la configuración
+        // En producción (Azure), esto se sobrescribe con appsettings.Production.json
+        var allowedOrigins = builder.Configuration
+            .GetSection("Cors:AllowedOrigins")
+            .Get<string[]>() ?? new[] 
+            { 
+                "https://localhost:7219",  // Fallback para desarrollo
+                "http://localhost:5048"
+            };
+
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials(); // Requerido para SignalR
