@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject IConfiguration Configuration
 @implements IAsyncDisposable
 
 <PageTitle>Muro de Dolores - Poll-it</PageTitle>
@@ -44,6 +45,13 @@
     - No conoce cómo se persisten los datos
     - El servidor maneja toda la lógica de negocio
     - SignalR es solo el canal de comunicación
+    
+    URL DE SIGNALR EN PRODUCCIÓN:
+    - Se construye a partir de ApiBaseUrl de la configuración
+    - En desarrollo: https://localhost:7001/painhub
+    - En producción: https://TU-APP.azurewebsites.net/painhub
+    - NO se usa Navigation.ToAbsoluteUri porque eso apuntaría
+      a Static Web Apps, no al backend en Azure App Service
 -->
 
 <div class="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4 md:p-8">
@@ -215,15 +223,16 @@
     /// <remarks>
     /// FLUJO DE INICIALIZACIÓN:
     /// 1. Cargar dolores existentes via HTTP GET
-    /// 2. Establecer conexión SignalR
-    /// 3. Suscribirse al evento "ReceiveNewPain"
-    /// 4. Mantener la conexión abierta
+    /// 2. Construir la URL del Hub de SignalR desde la configuración
+    /// 3. Establecer conexión SignalR
+    /// 4. Suscribirse al evento "ReceiveNewPain"
+    /// 5. Mantener la conexión abierta
     /// 
-    /// ARQUITECTURA SignalR:
-    /// - El Hub del servidor broadcast a TODOS los clientes conectados
-    /// - Este componente recibe y renderiza automáticamente
-    /// - No hay polling, la conexión es persistente
-    /// - Eficiente y escalable
+    /// POR QUÉ NO USAR Navigation.ToAbsoluteUri("/painhub"):
+    /// - Navigation.BaseUri apunta al origen de la Static Web Apps
+    /// - Ej: https://pollit.azurestaticapps.net/painhub  ← INCORRECTO
+    /// - El hub vive en el backend: https://mi-api.azurewebsites.net/painhub ← CORRECTO
+    /// - Por eso leemos la URL base de la API desde IConfiguration
     /// </remarks>
     protected override async Task OnInitializedAsync()
     {
@@ -232,13 +241,22 @@
             // 1. Cargar dolores existentes
             await LoadPainPoints();
 
-            // 2. Configurar conexión SignalR
+            // 2. Obtener la URL base de la API desde la configuración por entorno
+            //    - Desarrollo: https://localhost:7001/  (desde appsettings.Development.json)
+            //    - Producción: https://TU-APP.azurewebsites.net/  (desde appsettings.json)
+            var apiBaseUrl = Configuration["ApiBaseUrl"]
+                ?? throw new InvalidOperationException("No se encontró 'ApiBaseUrl' en la configuración.");
+
+            // 3. Construir la URL del hub combinando la base de la API con la ruta del hub
+            var hubUrl = new Uri(new Uri(apiBaseUrl), "/painhub").ToString();
+
+            // 4. Configurar conexión SignalR apuntando al backend correcto
             hubConnection = new HubConnectionBuilder()
-                .WithUrl(Navigation.ToAbsoluteUri("/painhub"))
+                .WithUrl(hubUrl)
                 .WithAutomaticReconnect() // Reconexión automática
                 .Build();
 
-            // 3. Suscribirse a nuevos dolores
+            // 5. Suscribirse a nuevos dolores
             hubConnection.On<PainPoint>("ReceiveNewPain", async (newPain) =>
             {
                 // Agregar el nuevo dolor a la lista
@@ -248,7 +266,7 @@
                 await InvokeAsync(StateHasChanged);
             });
 
-            // 4. Iniciar la conexión
+            // 6. Iniciar la conexión
             await hubConnection.StartAsync();
 
             lastRefreshTime = DateTime.UtcNow;

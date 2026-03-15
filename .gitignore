@@ -95,6 +95,10 @@ appsettings.Local.json
 secrets.json
 **/secrets.json
 
+# NOTA: appsettings.Production.json se commitea con PLACEHOLDERS de configuración.
+# Los valores reales se inyectan como Environment Variables en Azure App Service.
+# Esta estrategia mantiene el repo público sin exponer secretos.
+
 # Archivos de secretos de usuario de .NET
 %APPDATA%/Microsoft/UserSecrets/
 
