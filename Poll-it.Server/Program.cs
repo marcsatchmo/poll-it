@@ -44,6 +44,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Los servicios se registran aquí y estarán disponibles mediante 
 // Dependency Injection en toda la aplicación.
 
+// Log del entorno actual para debugging
+var environment = builder.Environment.EnvironmentName;
+Console.WriteLine($"[STARTUP] Entorno: {environment}");
+
 // Configurar Entity Framework Core con SQLite
 // La cadena de conexión especifica que la BD se guardará en el archivo "painpoints.db"
 builder.Services.AddDbContext<PainPointDbContext>(options =>
@@ -72,6 +76,13 @@ builder.Services.AddCors(options =>
                 "http://localhost:5048"
             };
 
+        // Log detallado de orígenes permitidos para debugging CORS
+        Console.WriteLine($"[CORS CONFIG] Orígenes permitidos configurados en entorno '{environment}':");
+        foreach (var origin in allowedOrigins)
+        {
+            Console.WriteLine($"  - {origin}");
+        }
+
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -98,7 +109,37 @@ using (var scope = app.Services.CreateScope())
 // ============================================================================
 // El orden importa: cada petición pasa por estos middleware en secuencia
 
-// Habilitar CORS (debe ir antes de los endpoints)
+// Middleware de debugging CORS: registra información sobre orígenes y headers
+// Este middleware es CRÍTICO para diagnosticar problemas CORS en producción
+app.Use(async (context, next) =>
+{
+    var origin = context.Request.Headers.Origin.ToString();
+    if (!string.IsNullOrEmpty(origin))
+    {
+        Console.WriteLine($"[CORS DEBUG] Petición recibida:");
+        Console.WriteLine($"  Origen: {origin}");
+        Console.WriteLine($"  Método: {context.Request.Method}");
+        Console.WriteLine($"  Path: {context.Request.Path}");
+    }
+    
+    await next();
+    
+    // Verificar si CORS headers fueron agregados correctamente por app.UseCors()
+    if (context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+    {
+        var acoHeader = context.Response.Headers["Access-Control-Allow-Origin"];
+        Console.WriteLine($"[CORS DEBUG] ✓ ACEPTADO - Header Access-Control-Allow-Origin: {acoHeader}");
+    }
+    else if (!string.IsNullOrEmpty(origin))
+    {
+        Console.WriteLine($"[CORS DEBUG] ✗ RECHAZADO - Origen {origin} NO tiene Access-Control-Allow-Origin");
+        Console.WriteLine($"[CORS DEBUG] Response status: {context.Response.StatusCode}");
+    }
+});
+
+// Habilitar CORS - CRÍTICO: Especificar exactamente el nombre de la política
+// Si no se especifica el nombre, app.UseCors() sin argumentos genera política anónima muy restrictiva
+// DEBE coincidir exactamente con builder.Services.AddCors() → options.AddPolicy("AllowBlazorClient", ...)
 app.UseCors("AllowBlazorClient");
 
 // Mapear el Hub de SignalR
