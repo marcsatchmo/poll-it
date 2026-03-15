@@ -201,6 +201,7 @@ app.MapPost("/api/painpoints", async (PainPointRequest request, PainPointDbConte
 /// DELETE /api/painpoints/cleanup
 /// ENDPOINT TEMPORAL - Elimina todos los pain points de la base de datos.
 /// Disponible en Development y Production para propósitos de administración.
+/// SIN AUTENTICACIÓN REQUERIDA para uso administrativo directo.
 /// </summary>
 app.MapDelete("/api/painpoints/cleanup", async (PainPointDbContext db) =>
 {
@@ -232,7 +233,8 @@ app.MapDelete("/api/painpoints/cleanup", async (PainPointDbContext db) =>
     }
 })
 .WithName("CleanupPainPoints")
-.WithOpenApi();
+.WithOpenApi()
+.AllowAnonymous();
 
 // ============================================================================
 // SECCIÓN 5: INICIAR LA APLICACIÓN
