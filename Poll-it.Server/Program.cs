@@ -8,76 +8,55 @@ using Poll_it.Shared;
 /// Punto de entrada de la aplicación Poll-it Server.
 /// Configura todos los servicios, middleware y endpoints de la API.
 /// </summary>
-/// <remarks>
-/// Arquitectura - Configuración de la Aplicación:
-/// 
-/// Este archivo sigue el patrón de "Minimal API" de .NET, que permite configurar
-/// toda la aplicación de manera concisa y legible. La estructura es:
-/// 
-/// 1. CONFIGURACIÓN DE SERVICIOS (builder.Services):
-///    - DbContext para acceso a datos
-///    - SignalR para comunicación en tiempo real
-///    - CORS para permitir llamadas desde el cliente Blazor
-/// 
-/// 2. CONSTRUCCIÓN DE LA APLICACIÓN (builder.Build())
-/// 
-/// 3. CONFIGURACIÓN DEL PIPELINE DE MIDDLEWARE:
-///    - Orden importante: cada middleware procesa la petición en secuencia
-///    - CORS debe ir antes de los endpoints
-///    - SignalR Hub se mapea para establecer las conexiones WebSocket
-/// 
-/// 4. DEFINICIÓN DE ENDPOINTS (Minimal API):
-///    - Endpoints RESTful para operaciones CRUD
-///    - Cada endpoint está documentado y sigue principios REST
-/// 
-/// Este diseño ejemplifica "Separation of Concerns": 
-/// - La configuración está separada de la lógica de negocio
-/// - Cada componente tiene una responsabilidad clara
-/// - Es fácil de entender y modificar
-/// </remarks>
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================================================
 // SECCIÓN 1: CONFIGURACIÓN DE SERVICIOS
 // ============================================================================
-// Los servicios se registran aquí y estarán disponibles mediante 
-// Dependency Injection en toda la aplicación.
 
 // Log del entorno actual para debugging
 var environment = builder.Environment.EnvironmentName;
 Console.WriteLine($"[STARTUP] Entorno: {environment}");
 
 // Configurar Entity Framework Core con SQLite
-// La cadena de conexión especifica que la BD se guardará en el archivo "painpoints.db"
 builder.Services.AddDbContext<PainPointDbContext>(options =>
     options.UseSqlite("Data Source=painpoints.db"));
 
 // Configurar SignalR para comunicación en tiempo real
-// SignalR maneja automáticamente las conexiones WebSocket, long polling, etc.
 builder.Services.AddSignalR();
 
 // Configurar CORS (Cross-Origin Resource Sharing)
-// Necesario porque el cliente Blazor (puerto diferente) hará peticiones al servidor
-// IMPORTANTE: Los orígenes permitidos se leen desde la configuración por entorno
-// - En desarrollo: localhost (definido aquí como fallback)
-// - En producción: Se cargan desde appsettings.Production.json via Azure
+// SOLUCIÓN ROBUSTA: El origen de producción está hardcodeado directamente aquí
+// para garantizar que CORS funcione independientemente de si ASPNETCORE_ENVIRONMENT
+// está configurado correctamente en Azure App Service.
+// Los orígenes de appsettings se fusionan como valores adicionales.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazorClient", policy =>
     {
-        // Leer los orígenes permitidos desde la configuración
-        // En producción (Azure), esto se sobrescribe con appsettings.Production.json
-        var allowedOrigins = builder.Configuration
-            .GetSection("Cors:AllowedOrigins")
-            .Get<string[]>() ?? new[] 
-            { 
-                "https://localhost:7219",  // Fallback para desarrollo
-                "http://localhost:5048"
-            };
+        // Orígenes de producción hardcodeados como respaldo definitivo.
+        // Esto garantiza que el frontend en Azure siempre pueda conectarse,
+        // sin depender de que ASPNETCORE_ENVIRONMENT sea "Production".
+        var hardcodedOrigins = new[]
+        {
+            "https://orange-moss-00032b10f.1.azurestaticapps.net",
+            "https://localhost:7219",
+            "http://localhost:5048"
+        };
 
-        // Log detallado de orígenes permitidos para debugging CORS
-        Console.WriteLine($"[CORS CONFIG] Orígenes permitidos configurados en entorno '{environment}':");
+        // Orígenes adicionales leídos desde la configuración (appsettings.*.json)
+        var configOrigins = builder.Configuration
+            .GetSection("Cors:AllowedOrigins")
+            .Get<string[]>() ?? Array.Empty<string>();
+
+        // Fusionar ambas listas eliminando duplicados
+        var allowedOrigins = hardcodedOrigins
+            .Concat(configOrigins)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Console.WriteLine($"[CORS CONFIG] Entorno: '{environment}' — Orígenes permitidos ({allowedOrigins.Length}):");
         foreach (var origin in allowedOrigins)
         {
             Console.WriteLine($"  - {origin}");
@@ -97,7 +76,6 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Asegurar que la base de datos esté creada
-// En producción, usarías migraciones, pero para demos esto es más simple
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PainPointDbContext>();
@@ -107,64 +85,52 @@ using (var scope = app.Services.CreateScope())
 // ============================================================================
 // SECCIÓN 3: CONFIGURACIÓN DEL PIPELINE DE MIDDLEWARE
 // ============================================================================
-// El orden importa: cada petición pasa por estos middleware en secuencia
+// ORDEN CRÍTICO: UseCors DEBE ir antes de MapHub y los endpoints.
 
-// Middleware de debugging CORS: registra información sobre orígenes y headers
-// Este middleware es CRÍTICO para diagnosticar problemas CORS en producción
+// Middleware de debugging CORS: registra si el header fue agregado o no
 app.Use(async (context, next) =>
 {
     var origin = context.Request.Headers.Origin.ToString();
     if (!string.IsNullOrEmpty(origin))
     {
-        Console.WriteLine($"[CORS DEBUG] Petición recibida:");
-        Console.WriteLine($"  Origen: {origin}");
-        Console.WriteLine($"  Método: {context.Request.Method}");
-        Console.WriteLine($"  Path: {context.Request.Path}");
+        Console.WriteLine($"[CORS DEBUG] Petición recibida — Origen: {origin} | Método: {context.Request.Method} | Path: {context.Request.Path}");
     }
-    
+
     await next();
-    
-    // Verificar si CORS headers fueron agregados correctamente por app.UseCors()
+
     if (context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
     {
         var acoHeader = context.Response.Headers["Access-Control-Allow-Origin"];
-        Console.WriteLine($"[CORS DEBUG] ✓ ACEPTADO - Header Access-Control-Allow-Origin: {acoHeader}");
+        Console.WriteLine($"[CORS DEBUG] ✓ ACEPTADO — Access-Control-Allow-Origin: {acoHeader}");
     }
     else if (!string.IsNullOrEmpty(origin))
     {
-        Console.WriteLine($"[CORS DEBUG] ✗ RECHAZADO - Origen {origin} NO tiene Access-Control-Allow-Origin");
-        Console.WriteLine($"[CORS DEBUG] Response status: {context.Response.StatusCode}");
+        Console.WriteLine($"[CORS DEBUG] ✗ RECHAZADO — Origen '{origin}' no tiene Access-Control-Allow-Origin. Status: {context.Response.StatusCode}");
     }
 });
 
-// Habilitar CORS - CRÍTICO: Especificar exactamente el nombre de la política
-// Si no se especifica el nombre, app.UseCors() sin argumentos genera política anónima muy restrictiva
-// DEBE coincidir exactamente con builder.Services.AddCors() → options.AddPolicy("AllowBlazorClient", ...)
+// Habilitar CORS con la política nombrada.
+// CRÍTICO: app.UseCors() DEBE llamarse con el nombre exacto de la política
+// y ANTES de app.MapHub / app.MapGet / app.MapPost.
 app.UseCors("AllowBlazorClient");
 
 // Mapear el Hub de SignalR
-// Los clientes se conectarán a "/painhub" para recibir actualizaciones en tiempo real
 app.MapHub<PainHub>("/painhub");
 
 // ============================================================================
 // SECCIÓN 4: DEFINICIÓN DE ENDPOINTS (MINIMAL API)
 // ============================================================================
-// Aquí definimos nuestra API RESTful de manera simple y directa
 
 /// <summary>
 /// GET /api/painpoints
 /// Obtiene todos los puntos de dolor ordenados por fecha de creación (más recientes primero).
 /// </summary>
-/// <remarks>
-/// Este endpoint se llama cuando se carga la página para mostrar todos los puntos existentes.
-/// Arquitectura: Separación entre la capa de datos (DbContext) y la capa de presentación (API).
-/// </remarks>
 app.MapGet("/api/painpoints", async (PainPointDbContext db) =>
 {
     var painPoints = await db.PainPoints
         .OrderByDescending(p => p.CreatedAt)
         .ToListAsync();
-    
+
     return Results.Ok(painPoints);
 })
 .WithName("GetAllPainPoints")
@@ -172,29 +138,17 @@ app.MapGet("/api/painpoints", async (PainPointDbContext db) =>
 
 /// <summary>
 /// POST /api/painpoints
-/// Crea un nuevo punto de dolor y notifica a todos los clientes conectados vía SignalR.
+/// Crea un nuevo punto de dolor y notifica a todos los clientes vía SignalR.
 /// </summary>
-/// <remarks>
-/// Flujo de la operación:
-/// 1. Recibe el texto del dolor del cliente
-/// 2. Crea un nuevo PainPoint con un color aleatorio
-/// 3. Lo guarda en la base de datos
-/// 4. Usa SignalR para notificar a TODOS los clientes conectados en tiempo real
-/// 
-/// Este es el corazón de la arquitectura de tiempo real de la aplicación.
-/// </remarks>
 app.MapPost("/api/painpoints", async (PainPointRequest request, PainPointDbContext db, IHubContext<PainHub> hubContext) =>
 {
-    // Validar que el texto no esté vacío
     if (string.IsNullOrWhiteSpace(request.Text))
     {
         return Results.BadRequest(new { error = "El texto del dolor no puede estar vacío" });
     }
 
-    // Colores disponibles para los Post-its
     var colors = new[] { "yellow", "pink", "blue", "green", "purple", "orange" };
-    
-    // Crear el nuevo punto de dolor
+
     var painPoint = new PainPoint
     {
         Text = request.Text.Trim(),
@@ -202,15 +156,12 @@ app.MapPost("/api/painpoints", async (PainPointRequest request, PainPointDbConte
         Color = colors[Random.Shared.Next(colors.Length)]
     };
 
-    // Guardar en la base de datos
     db.PainPoints.Add(painPoint);
     await db.SaveChangesAsync();
 
-    // ¡MOMENTO CLAVE! Notificar a todos los clientes conectados vía SignalR
-    // Este es el "momento mágico" donde todos ven aparecer el nuevo dolor en tiempo real
+    // Notificar a todos los clientes conectados vía SignalR en tiempo real
     await hubContext.Clients.All.SendAsync("ReceiveNewPain", painPoint);
 
-    // Retornar el punto creado con su ID
     return Results.Created($"/api/painpoints/{painPoint.Id}", painPoint);
 })
 .WithName("CreatePainPoint")
@@ -225,12 +176,8 @@ app.Run();
 // ============================================================================
 // MODELOS DE PETICIÓN
 // ============================================================================
-// Estos son DTOs (Data Transfer Objects) para las peticiones HTTP
 
 /// <summary>
 /// Modelo para la petición de creación de un punto de dolor.
 /// </summary>
-/// <remarks>
-/// Usamos un record para simplicidad. Es inmutable y tiene igualdad por valor.
-/// </remarks>
 public record PainPointRequest(string Text);
