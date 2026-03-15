@@ -1,0 +1,68 @@
+name: Deploy Backend a Azure App Service
+
+# Se ejecuta cuando hay push a la rama main con cambios en el backend o código compartido
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Poll-it.Server/**'
+      - 'Poll-it.Shared/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Descargar el código del repositorio
+      - name: Checkout código del repositorio
+        uses: actions/checkout@v4
+
+      # 2. Configurar .NET SDK
+      # IMPORTANTE: Asegúrate de que la versión aquí coincida con tu csproj
+      # (típicamente algo como net8.0 o net7.0)
+      - name: Configurar .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0' # Cambia esto si tu proyecto usa otra versión
+
+      # 3. Restaurar dependencias NuGet
+      - name: Restaurar dependencias
+        run: dotnet restore Poll-it.Server/Poll-it.Server.csproj
+
+      # 4. Compilar el proyecto backend
+      - name: Compilar proyecto
+        run: dotnet build Poll-it.Server/Poll-it.Server.csproj --configuration Release --no-restore
+
+      # 5. Publicar el proyecto en modo Release
+      # Esto genera los archivos listos para producción
+      - name: Publicar proyecto
+        run: dotnet publish Poll-it.Server/Poll-it.Server.csproj --configuration Release --no-build --output ./publish
+
+      # 6. Desplegar a Azure App Service
+      # IMPORTANTE: Necesitas configurar el secreto AZURE_WEBAPP_PUBLISH_PROFILE en GitHub
+      # Ver instrucciones en la documentación de Azure Portal setup
+      - name: Desplegar a Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          # CONFIGURABLE: Reemplaza con el nombre de tu App Service en Azure
+          app-name: 'tu-app-service-name'
+          
+          # Este secreto debe contener el perfil de publicación descargado de Azure Portal
+          # Instrucciones: Ve a Settings → Secrets and variables → Actions en GitHub
+          # y crea un nuevo secreto llamado AZURE_WEBAPP_PUBLISH_PROFILE
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          
+          # Carpeta donde se publicó el proyecto
+          package: ./publish
+
+      # 7. Notificación de éxito (opcional)
+      - name: ✅ Despliegue completado exitosamente
+        if: success()
+        run: echo "Backend desplegado correctamente a Azure App Service"
+
+      # 8. Notificación de error (opcional)
+      - name: ❌ Error en el despliegue
+        if: failure()
+        run: echo "Falló el despliegue del backend. Revisa los logs anteriores."

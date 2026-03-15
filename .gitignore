@@ -1,2 +1,158 @@
 # Frida specifications folder
 .frida-specs/**
+
+## -------------------------------------------------------
+## .NET / Visual Studio
+## -------------------------------------------------------
+
+# Carpetas de salida de compilación
+[Bb]in/
+[Oo]bj/
+
+# Archivos de usuario de Visual Studio
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Carpeta oculta de Visual Studio
+.vs/
+
+# Archivos de publicación / artefactos de deploy
+[Pp]ublish/
+publish/
+
+# Resultados de pruebas
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# Archivos de cobertura de código
+*.coverage
+*.coveragexml
+coverage*/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Archivos temporales de MSBuild
+*.tmp_proj
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.log
+
+# Archivos de diagnóstico de Visual Studio
+*.VC.db
+*.VC.VC.opendb
+*.pidb
+*.svclog
+*.scc
+
+# Profiler
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# Archivos de análisis de código
+FakesAssemblies/
+_ReSharper*/
+*.DotSettings.user
+
+# Azure Functions / WebJobs
+.azure/
+
+## -------------------------------------------------------
+## Configuración sensible / secretos locales
+## -------------------------------------------------------
+
+# Configuración de desarrollo local (puede contener connection strings, secrets, etc.)
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+**/secrets.json
+
+# Archivos de secretos de usuario de .NET
+%APPDATA%/Microsoft/UserSecrets/
+
+## -------------------------------------------------------
+## Base de datos SQLite local (generada en tiempo de ejecución)
+## -------------------------------------------------------
+*.db
+*.db-shm
+*.db-wal
+
+## -------------------------------------------------------
+## Blazor WebAssembly
+## -------------------------------------------------------
+
+# Archivos generados por la toolchain de Blazor WASM
+**/wwwroot/_framework/
+**/wwwroot/appsettings.Development.json
+
+## -------------------------------------------------------
+## Node.js (por si se agregan herramientas JS en el futuro)
+## -------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+## -------------------------------------------------------
+## Sistema operativo
+## -------------------------------------------------------
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+## -------------------------------------------------------
+## IDEs y editores
+## -------------------------------------------------------
+
+# JetBrains (Rider)
+.idea/
+*.sln.iml
+
+# VS Code (mantener si el equipo comparte settings, ignorar si no)
+# .vscode/
+
+# Vim / Emacs
+*.swp
+*.swo
+*.bak
