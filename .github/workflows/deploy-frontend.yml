@@ -22,7 +22,7 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
-    
+
     steps:
       # 1. Descargar el código del repositorio
       - name: Checkout código del repositorio
@@ -31,58 +31,43 @@ jobs:
           submodules: true
           lfs: false
 
-      # 2. Configurar .NET SDK
-      # IMPORTANTE: Asegúrate de que la versión aquí coincida con tu csproj
-      # (típicamente algo como net8.0 o net7.0)
-      - name: Configurar .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0' # Cambia esto si tu proyecto usa otra versión
-
-      # 3. Restaurar dependencias NuGet para el cliente Blazor WASM
-      - name: Restaurar dependencias del cliente
-        run: dotnet restore Poll-it.Client/Poll-it.Client.csproj
-
-      # 4. Compilar el proyecto cliente
-      - name: Compilar proyecto cliente
-        run: dotnet build Poll-it.Client/Poll-it.Client.csproj --configuration Release --no-restore
-
-      # 5. Publicar el proyecto Blazor WebAssembly
-      # Esto genera los archivos estáticos en wwwroot para servir en Static Web Apps
-      - name: Publicar proyecto cliente
-        run: dotnet publish Poll-it.Client/Poll-it.Client.csproj --configuration Release --no-build --output ./publish
-
-      # 6. Desplegar a Azure Static Web Apps
-      # IMPORTANTE: Azure Static Web Apps requiere un token de despliegue (AZURE_STATIC_WEB_APPS_API_TOKEN)
-      # Ver instrucciones en la documentación de Azure Portal setup
+      # 2. Desplegar a Azure Static Web Apps
+      #
+      # PROBLEMA RAÍZ DE LA CONFIGURACIÓN ANTERIOR:
+      # Usar 'dotnet publish' manualmente y luego apuntar a 'publish/wwwroot' con
+      # skip_app_build:true fallaba porque Azure/static-web-apps-deploy@v1 ejecuta
+      # Oryx en un contenedor que tiene su propio directorio de trabajo. Las rutas
+      # relativas generadas por pasos anteriores del runner (./publish) no son
+      # accesibles desde dentro de ese contenedor.
+      #
+      # SOLUCIÓN:
+      # Dejar que la acción maneje el build completamente. Oryx detecta automáticamente
+      # proyectos Blazor WASM, instala .NET y ejecuta dotnet publish internamente.
+      # app_location apunta al directorio del .csproj del cliente.
+      # output_location le indica a Oryx dónde buscar los archivos estáticos generados.
       - name: Desplegar a Azure Static Web Apps
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
-          # CONFIGURABLE: Reemplaza con el nombre de tu recurso Static Web Apps en Azure
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          
-          # Acción a ejecutar: upload (para push a main) o close (para cerrar PR)
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: 'upload'
-          
-          # Ubicación de la app pre-publicada: dotnet publish genera los archivos en ./publish/wwwroot
-          app_location: 'publish/wwwroot'
-          
-          # output_location vacío porque ya apuntamos directamente al wwwroot publicado
-          output_location: ''
-          
-          # Indicar que los archivos ya están pre-compilados (no usar el build nativo de la acción)
-          skip_app_build: true
-          
-          # No tenemos API integrada en Static Web Apps (el backend está en App Service)
+
+          # Directorio del proyecto Blazor WASM (donde está el .csproj)
+          app_location: 'Poll-it.Client'
+
+          # Oryx publica Blazor WASM en bin/Release/net8.0/publish/wwwroot
+          # output_location es relativo a app_location dentro del publish output
+          output_location: 'wwwroot'
+
+          # No hay API integrada en Static Web Apps (el backend está en App Service separado)
           api_location: ''
 
-      # 7. Notificación de éxito (opcional)
+      # 3. Notificación de resultado
       - name: ✅ Despliegue completado exitosamente
         if: success()
         run: echo "Frontend desplegado correctamente a Azure Static Web Apps"
 
-      # 8. Notificación de error (opcional)
       - name: ❌ Error en el despliegue
         if: failure()
         run: echo "Falló el despliegue del frontend. Revisa los logs anteriores."
@@ -92,11 +77,12 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
-    
+
     steps:
       - name: Cerrar entorno de preview
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: 'close'
-          app_location: '/'
+          app_location: 'Poll-it.Client'
