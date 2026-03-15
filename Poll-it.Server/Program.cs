@@ -81,13 +81,13 @@ using (var scope = app.Services.CreateScope())
 // ============================================================================
 // ORDEN CRÍTICO: UseCors DEBE ir antes de MapHub y los endpoints.
 
-// MIDDLEWARE MANUAL CORS — ÚLTIMO RECURSO ABSOLUTO
-// Este middleware añade el header Access-Control-Allow-Origin MANUALMENTE,
-// ANTES de que app.UseCors() se ejecute. Esto garantiza que el header esté
-// presente incluso si Azure App Service tiene su módulo CORS nativo activado
-// (que interfiere con los headers de ASP.NET Core) o si hay algún otro
-// componente en el pipeline que los elimine.
-// Para las peticiones OPTIONS (preflight), responde inmediatamente con 204.
+// MIDDLEWARE MANUAL CORS — RESPALDO DEFINITIVO PARA AZURE APP SERVICE
+// Este middleware actúa como capa de respaldo absoluta para garantizar que
+// los headers CORS estén presentes, especialmente para peticiones OPTIONS (preflight).
+// 
+// IMPORTANTE: Este middleware NO hace return() en OPTIONS. Deja que el resto del
+// pipeline continúe, permitiendo que app.UseCors() y otros middlewares procesen
+// la petición correctamente. ASP.NET Core maneja el 204 automáticamente.
 var productionOrigin = "https://orange-moss-00032b10f.1.azurestaticapps.net";
 app.Use(async (context, next) =>
 {
@@ -115,14 +115,10 @@ app.Use(async (context, next) =>
             context.Response.Headers["Vary"] = "Origin";
 
             Console.WriteLine($"[CORS DEBUG] Headers manuales añadidos para origen: {origin}");
-
-            // Responder inmediatamente a peticiones OPTIONS (preflight)
-            if (context.Request.Method == "OPTIONS")
-            {
-                context.Response.StatusCode = 204;
-                Console.WriteLine($"[CORS DEBUG] Preflight OPTIONS respondido con 204");
-                return;
-            }
+            
+            // NO hacer return aquí. Dejar que el pipeline continúe para que
+            // app.UseCors() y otros middlewares procesen la petición correctamente.
+            // ASP.NET Core manejará la respuesta 204 para OPTIONS automáticamente.
         }
         else
         {
