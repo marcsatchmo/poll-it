@@ -197,6 +197,48 @@ app.MapPost("/api/painpoints", async (PainPointRequest request, PainPointDbConte
 .WithName("CreatePainPoint")
 .WithOpenApi();
 
+/// <summary>
+/// DELETE /api/painpoints/cleanup
+/// ENDPOINT TEMPORAL - Elimina todos los pain points de la base de datos.
+/// Este endpoint solo está disponible en ambiente Development.
+/// Úsalo una sola vez y luego será removido.
+/// </summary>
+app.MapDelete("/api/painpoints/cleanup", async (PainPointDbContext db) =>
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        return Results.Forbid();
+    }
+
+    try
+    {
+        var painPoints = await db.PainPoints.ToListAsync();
+        
+        if (painPoints.Count > 0)
+        {
+            Console.WriteLine($"[CLEANUP] Encontrados {painPoints.Count} pain points para eliminar...");
+            
+            db.PainPoints.RemoveRange(painPoints);
+            await db.SaveChangesAsync();
+            
+            Console.WriteLine($"[CLEANUP] ✓ {painPoints.Count} pain points eliminados exitosamente");
+            return Results.Ok(new { message = $"{painPoints.Count} pain points eliminados" });
+        }
+        else
+        {
+            Console.WriteLine("[CLEANUP] No hay pain points para eliminar");
+            return Results.Ok(new { message = "No hay pain points para eliminar" });
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CLEANUP] ✗ Error al eliminar pain points: {ex.Message}");
+        return Results.BadRequest(new { error = ex.Message });
+    }
+})
+.WithName("CleanupPainPoints")
+.WithOpenApi();
+
 // ============================================================================
 // SECCIÓN 5: INICIAR LA APLICACIÓN
 // ============================================================================
