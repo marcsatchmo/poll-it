@@ -46,8 +46,8 @@ jobs:
       - name: Desplegar a Azure App Service
         uses: azure/webapps-deploy@v3
         with:
-          # CONFIGURABLE: Reemplaza con el nombre de tu App Service en Azure
-          app-name: 'tu-app-service-name'
+          # Nombre del App Service en Azure (extraído de la URL del App Service)
+          app-name: 'poll-it-abe8chfgghe9gyb7'
           
           # Este secreto debe contener el perfil de publicación descargado de Azure Portal
           # Instrucciones: Ve a Settings → Secrets and variables → Actions en GitHub
