@@ -65,11 +65,14 @@ jobs:
           # Acción a ejecutar: upload (para push a main) o close (para cerrar PR)
           action: 'upload'
           
-          # Ubicación del proyecto Blazor WebAssembly en el repositorio
+          # Ubicación de la app pre-publicada: dotnet publish genera los archivos en ./publish/wwwroot
           app_location: 'publish/wwwroot'
           
-          # Ubicación de salida (para Static Web Apps, ya está en publish/wwwroot)
+          # output_location vacío porque ya apuntamos directamente al wwwroot publicado
           output_location: ''
+          
+          # Indicar que los archivos ya están pre-compilados (no usar el build nativo de la acción)
+          skip_app_build: true
           
           # No tenemos API integrada en Static Web Apps (el backend está en App Service)
           api_location: ''
@@ -96,3 +99,4 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: 'close'
+          app_location: '/'
