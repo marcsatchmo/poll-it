@@ -30,14 +30,10 @@ builder.Services.AddSignalR();
 // SOLUCIÓN ROBUSTA: El origen de producción está hardcodeado directamente aquí
 // para garantizar que CORS funcione independientemente de si ASPNETCORE_ENVIRONMENT
 // está configurado correctamente en Azure App Service.
-// Los orígenes de appsettings se fusionan como valores adicionales.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazorClient", policy =>
     {
-        // Orígenes de producción hardcodeados como respaldo definitivo.
-        // Esto garantiza que el frontend en Azure siempre pueda conectarse,
-        // sin depender de que ASPNETCORE_ENVIRONMENT sea "Production".
         var hardcodedOrigins = new[]
         {
             "https://orange-moss-00032b10f.1.azurestaticapps.net",
@@ -45,12 +41,10 @@ builder.Services.AddCors(options =>
             "http://localhost:5048"
         };
 
-        // Orígenes adicionales leídos desde la configuración (appsettings.*.json)
         var configOrigins = builder.Configuration
             .GetSection("Cors:AllowedOrigins")
             .Get<string[]>() ?? Array.Empty<string>();
 
-        // Fusionar ambas listas eliminando duplicados
         var allowedOrigins = hardcodedOrigins
             .Concat(configOrigins)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -87,13 +81,53 @@ using (var scope = app.Services.CreateScope())
 // ============================================================================
 // ORDEN CRÍTICO: UseCors DEBE ir antes de MapHub y los endpoints.
 
-// Middleware de debugging CORS: registra si el header fue agregado o no
+// MIDDLEWARE MANUAL CORS — ÚLTIMO RECURSO ABSOLUTO
+// Este middleware añade el header Access-Control-Allow-Origin MANUALMENTE,
+// ANTES de que app.UseCors() se ejecute. Esto garantiza que el header esté
+// presente incluso si Azure App Service tiene su módulo CORS nativo activado
+// (que interfiere con los headers de ASP.NET Core) o si hay algún otro
+// componente en el pipeline que los elimine.
+// Para las peticiones OPTIONS (preflight), responde inmediatamente con 204.
+var productionOrigin = "https://orange-moss-00032b10f.1.azurestaticapps.net";
 app.Use(async (context, next) =>
 {
     var origin = context.Request.Headers.Origin.ToString();
+
     if (!string.IsNullOrEmpty(origin))
     {
-        Console.WriteLine($"[CORS DEBUG] Petición recibida — Origen: {origin} | Método: {context.Request.Method} | Path: {context.Request.Path}");
+        Console.WriteLine($"[CORS DEBUG] Petición — Origen: {origin} | Método: {context.Request.Method} | Path: {context.Request.Path}");
+
+        // Lista de orígenes permitidos (misma que la política CORS)
+        var allowed = new[]
+        {
+            productionOrigin,
+            "https://localhost:7219",
+            "http://localhost:5048"
+        };
+
+        if (allowed.Contains(origin, StringComparer.OrdinalIgnoreCase))
+        {
+            // Añadir headers CORS manualmente como respaldo
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+            context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+            context.Response.Headers["Vary"] = "Origin";
+
+            Console.WriteLine($"[CORS DEBUG] Headers manuales añadidos para origen: {origin}");
+
+            // Responder inmediatamente a peticiones OPTIONS (preflight)
+            if (context.Request.Method == "OPTIONS")
+            {
+                context.Response.StatusCode = 204;
+                Console.WriteLine($"[CORS DEBUG] Preflight OPTIONS respondido con 204");
+                return;
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[CORS DEBUG] Origen NO reconocido: {origin}");
+        }
     }
 
     await next();
@@ -105,11 +139,11 @@ app.Use(async (context, next) =>
     }
     else if (!string.IsNullOrEmpty(origin))
     {
-        Console.WriteLine($"[CORS DEBUG] ✗ RECHAZADO — Origen '{origin}' no tiene Access-Control-Allow-Origin. Status: {context.Response.StatusCode}");
+        Console.WriteLine($"[CORS DEBUG] ✗ SIN HEADER — Status: {context.Response.StatusCode}");
     }
 });
 
-// Habilitar CORS con la política nombrada.
+// Habilitar CORS con la política nombrada (capa adicional sobre el middleware manual).
 // CRÍTICO: app.UseCors() DEBE llamarse con el nombre exacto de la política
 // y ANTES de app.MapHub / app.MapGet / app.MapPost.
 app.UseCors("AllowBlazorClient");

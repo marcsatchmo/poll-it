@@ -1,10 +1,10 @@
 name: Deploy Frontend a Azure Static Web Apps
 
-# Se ejecuta cuando hay push a la rama main con cambios en el frontend o código compartido
+# Se ejecuta cuando hay push a la rama master con cambios en el frontend o código compartido
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'Poll-it.Client/**'
       - 'Poll-it.Shared/**'
@@ -12,7 +12,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
-      - main
+      - master
     paths:
       - 'Poll-it.Client/**'
       - 'Poll-it.Shared/**'
@@ -56,7 +56,7 @@ jobs:
           # Directorio del proyecto Blazor WASM (donde está el .csproj)
           app_location: 'Poll-it.Client'
 
-          # Oryx publica Blazor WASM en bin/Release/net8.0/publish/wwwroot
+          # Oryx publica Blazor WASM en bin/Release/net*/publish/wwwroot
           # output_location es relativo a app_location dentro del publish output
           output_location: 'wwwroot'
 
